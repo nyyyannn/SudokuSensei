@@ -217,6 +217,7 @@ class SudokuGenerator:
     def _generate_full_solution(self):
         self.brute_force_solver.solve()
         self.solution = copy.deepcopy(self.board)
+        self.board = copy.deepcopy(self.solution)
     def _poke_holes(self):
         cells = [(r, c) for r in range(9) for c in range(9)]
         random.shuffle(cells)
@@ -234,8 +235,14 @@ class SudokuGenerator:
                 removed_count += 1
     def _analyze_difficulty(self):
         human_solver = HumanSolver(self.board)
-        self.analysis = human_solver.analyze()
+        full_analysis = human_solver.analyze()
+        self.analysis = {
+            "score": full_analysis["score"],
+            "hardest_technique": full_analysis["hardest_technique"]
+        }
+
     def get_puzzle_and_analysis(self):
+        print(self.board)
         return {"puzzle": self.board, "solution": self.solution, "analysis": self.analysis}
 
 class SudokuSolver:
@@ -288,7 +295,7 @@ def print_board(board, title="Sudoku Puzzle"):
 if __name__ == "__main__":
     # Let's generate a hard puzzle to see the advanced techniques in action
     print("Generating and analyzing a 'hard' difficulty puzzle...")
-    generator = SudokuGenerator(difficulty='easy')
+    generator = SudokuGenerator(difficulty='hard')
     result = generator.get_puzzle_and_analysis()
 
     print_board(result["puzzle"], "Generated Puzzle")
