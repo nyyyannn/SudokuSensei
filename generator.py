@@ -291,16 +291,3 @@ def print_board(board, title="Sudoku Puzzle"):
         print(f"{' '.join(printable_row[0:3])} | {' '.join(printable_row[3:6])} | {' '.join(printable_row[6:9])}")
     print("-" * 23)
 
-# --- Main Execution Block ---
-if __name__ == "__main__":
-    # Let's generate a hard puzzle to see the advanced techniques in action
-    print("Generating and analyzing a 'hard' difficulty puzzle...")
-    generator = SudokuGenerator(difficulty='hard')
-    result = generator.get_puzzle_and_analysis()
-
-    print_board(result["puzzle"], "Generated Puzzle")
-    print("\n--- Analysis ---")
-    print(f"Cognitive Difficulty Score: {result['analysis']['score']}")
-    print(f"Hardest Technique Required: {result['analysis']['hardest_technique']}")
-    print("----------------\n")
-    print_board(result["solution"], "Solution")
