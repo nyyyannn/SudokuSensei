@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from 'react';
 
-export default function Timer({ isActive }) {
+export default function Timer({ isActive, resetSignal }) {
   const [seconds, setSeconds] = useState(0);
 
+  // ✅ Reset seconds whenever resetSignal changes
+  useEffect(() => {
+    setSeconds(0);
+  }, [resetSignal]);
+
+  // ✅ Run the timer only when active
   useEffect(() => {
     if (!isActive) return;
     const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
