@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 
-export default function Timer({ isActive, resetSignal }) {
-  const [seconds, setSeconds] = useState(0);
+export default function Timer({ isActive, resetSignal, elapsedTime = 0 }) {
+  const [seconds, setSeconds] = useState(elapsedTime);
 
-  // ✅ Reset seconds whenever resetSignal changes
+  // ✅ Reset seconds whenever resetSignal changes, but preserve elapsed time
   useEffect(() => {
-    setSeconds(0);
-  }, [resetSignal]);
+    if (resetSignal && elapsedTime === 0) {
+      setSeconds(0);
+    } else if (elapsedTime > 0) {
+      setSeconds(elapsedTime);
+    }
+  }, [resetSignal, elapsedTime]);
 
   // ✅ Run the timer only when active
   useEffect(() => {

@@ -1,23 +1,256 @@
 from flask_cors import CORS
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, redirect, url_for
 from generator import SudokuGenerator 
 import os
 import math
+from pymongo import MongoClient
+from bson import ObjectId
+import json
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 # IMPORTANT: Update this origin to your actual frontend URL in production
 CORS(app, supports_credentials=True, origins=["http://localhost:5173"]) 
-app.secret_key = os.urandom(24) 
+app.secret_key = os.getenv("SECRET_KEY")
+
+# Session configuration to prevent loss on refresh
+app.config['SESSION_COOKIE_SECURE'] = True  
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)  # Session lasts 7 days
+
+# MongoDB connection
+MONGO_URI = os.getenv('MONGO_URI')
+client = MongoClient(MONGO_URI)
+db = client.SudokuSensei
+users_collection = db.users
+games_collection = db.games
+
 
 def count_empty_cells(puzzle):
     """Helper function to count the number of empty cells (zeros) in a puzzle."""
     return sum(row.count(0) for row in puzzle)
+
+@app.route('/api/auth/check', methods=['GET'])
+def check_auth():
+    """Check if user is authenticated"""
+    try:
+        user_id = session.get('user_id')
+        print(f"Auth check - Session user_id: {user_id}")
+        
+        if user_id:
+            user = users_collection.find_one({'_id': ObjectId(user_id)})
+            if user:
+                print(f"Auth check - User found: {user['name']}")
+                return jsonify({
+                    'authenticated': True,
+                    'user': {
+                        'name': user['name'],
+                        'id': str(user['_id']),
+                        'player_skill': user.get('player_skill', 20.0),
+                        'puzzles_played': user.get('puzzles_played', 0),
+                        'games_given_up': user.get('games_given_up', 0)
+                    }
+                })
+            else:
+                print(f"Auth check - User not found in DB for ID: {user_id}")
+                # Clear invalid session
+                session.clear()
+        else:
+            print("Auth check - No user_id in session")
+            
+        return jsonify({'authenticated': False})
+    except Exception as e:
+        print(f"Auth check error: {e}")
+        return jsonify({'authenticated': False, 'error': str(e)})
+
+@app.route('/api/auth/signup', methods=['POST'])
+def signup():
+    """Sign up a new user with just a name"""
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    
+    # Check if user already exists
+    existing_user = users_collection.find_one({'name': name})
+    if existing_user:
+        return jsonify({'error': 'User with this name already exists'}), 409
+    
+    # Create new user
+    user = {
+        'name': name,
+        'created_at': datetime.utcnow(),
+        'player_skill': 20.0,
+        'puzzles_played': 0,
+        'games_given_up': 0
+    }
+    
+    result = users_collection.insert_one(user)
+    user['_id'] = result.inserted_id
+    
+    # Set session as permanent
+    session.permanent = True
+    session['user_id'] = str(user['_id'])
+    session['user_name'] = user['name']
+    session['player_skill'] = user['player_skill']
+    session['puzzles_played'] = user['puzzles_played']
+    session['games_given_up'] = user['games_given_up']
+    
+    return jsonify({
+        'success': True,
+        'user': {
+            'name': user['name'],
+            'id': str(user['_id'])
+        }
+    })
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login user with just a name"""
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    
+    # Find user
+    user = users_collection.find_one({'name': name})
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Set session as permanent
+    session.permanent = True
+    session['user_id'] = str(user['_id'])
+    session['user_name'] = user['name']
+    session['player_skill'] = user.get('player_skill', 20.0)
+    session['puzzles_played'] = user.get('puzzles_played', 0)
+    session['games_given_up'] = user.get('games_given_up', 0)
+    
+    return jsonify({
+        'success': True,
+        'user': {
+            'name': user['name'],
+            'id': str(user['_id'])
+        }
+    })
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Logout user"""
+    session.clear()
+    return jsonify({'success': True})
+
+@app.route('/api/game/give-up', methods=['POST'])
+def give_up():
+    """Handle user giving up on current puzzle"""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = ObjectId(session['user_id'])
+    
+    # Get current user data
+    user = users_collection.find_one({'_id': user_id})
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Ensure games_given_up field exists
+    current_give_ups = user.get('games_given_up', 0)
+    new_give_ups = current_give_ups + 1
+    
+    # Get current puzzles played
+    current_puzzles_played = user.get('puzzles_played', 0)
+    new_puzzles_played = current_puzzles_played + 1
+    
+    # Update in database
+    users_collection.update_one(
+        {'_id': user_id},
+        {
+            '$set': {
+                'games_given_up': new_give_ups,
+                'puzzles_played': new_puzzles_played
+            }
+        }
+    )
+    
+    # Update session
+    session['games_given_up'] = new_give_ups
+    session['puzzles_played'] = new_puzzles_played
+    
+    # Clear saved game state
+    games_collection.delete_one({'user_id': user_id})
+    
+    return jsonify({
+        'success': True,
+        'games_given_up': new_give_ups,
+        'puzzles_played': new_puzzles_played
+    })
+
+@app.route('/api/game/save', methods=['POST'])
+def save_game():
+    """Save current game state"""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    data = request.get_json()
+    user_id = ObjectId(session['user_id'])
+    
+    game_data = {
+        'user_id': user_id,
+        'puzzle': data.get('puzzle'),
+        'user_board': data.get('user_board'),
+        'solution': data.get('solution'),
+        'start_time': data.get('start_time'),
+        'is_game_active': data.get('is_game_active', False),
+        'elapsed_time': data.get('elapsed_time', 0),  # Store elapsed time
+        'updated_at': datetime.utcnow()
+    }
+    
+    # Update or insert game state
+    games_collection.update_one(
+        {'user_id': user_id},
+        {'$set': game_data},
+        upsert=True
+    )
+    
+    return jsonify({'success': True})
+
+@app.route('/api/game/load', methods=['GET'])
+def load_game():
+    """Load saved game state"""
+    if not session.get('user_id'):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = ObjectId(session['user_id'])
+    game = games_collection.find_one({'user_id': user_id})
+    
+    if game:
+        return jsonify({
+            'has_saved_game': True,
+            'game': {
+                'puzzle': game.get('puzzle'),
+                'user_board': game.get('user_board'),
+                'solution': game.get('solution'),
+                'start_time': game.get('start_time'),
+                'is_game_active': game.get('is_game_active', False),
+                'elapsed_time': game.get('elapsed_time', 0)
+            }
+        })
+    
+    return jsonify({'has_saved_game': False})
 
 @app.route('/api/new-game', methods=['POST'])
 def new_game():
     """
     Generates a new puzzle and calculates a FAIR target time based on empty cells.
     """
+    if not session.get('user_id'):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
     player_skill = session.get('player_skill', 20.0)
     
     if player_skill < 30:
@@ -44,10 +277,6 @@ def new_game():
     session['seconds_per_cell'] = seconds_per_cell
     session['difficulty_setting'] = difficulty_setting
 
-    if 'player_skill' not in session:
-        session['player_skill'] = 20.0
-        session['puzzles_played'] = 0
-
     print(f"Puzzle has {empty_cells} empty cells. Target time is {target_time}s.")
 
     result['target_time'] = target_time
@@ -58,6 +287,9 @@ def submit_solution():
     """
     Updates player skill with the new "Cells' Worth of Time" logic.
     """
+    if not session.get('user_id'):
+        return jsonify({'error': 'Not authenticated'}), 401
+    
     data = request.get_json()
     time_taken = data.get('time_taken')
     
@@ -91,19 +323,55 @@ def submit_solution():
         max_loss = 10.0
         skill_change = -penalty_factor * max_loss
 
-    # Update player skill
-    session['player_skill'] = max(10.0, old_skill + skill_change) 
+    # Update player skill in session
+    new_skill = max(10.0, old_skill + skill_change)
+    session['player_skill'] = new_skill
     session['puzzles_played'] = session.get('puzzles_played', 0) + 1
+    
+    # Update in database
+    user_id = ObjectId(session['user_id'])
+    users_collection.update_one(
+        {'_id': user_id},
+        {
+            '$set': {
+                'player_skill': new_skill,
+                'puzzles_played': session['puzzles_played']
+            }
+        }
+    )
 
-    print(f"Time: {time_taken:.1f}s, Target: {target_time}s. Skill change: {skill_change:.2f}. New skill: {session['player_skill']:.2f}")
+    # Clean up: Delete saved game since puzzle is completed
+    games_collection.delete_one({'user_id': user_id})
+
+    print(f"Time: {time_taken:.1f}s, Target: {target_time}s. Skill change: {skill_change:.2f}. New skill: {new_skill:.2f}")
 
     return jsonify({
         'status': 'success',
-        'new_skill_score': session['player_skill'],
+        'new_skill_score': new_skill,
         'old_skill_score': old_skill,
         'skill_change': skill_change,
         'was_target_met': time_taken <= target_time
     })
 
+@app.route('/api/debug/session', methods=['GET'])
+def debug_session():
+    """Debug endpoint to check session status"""
+    try:
+        session_data = {
+            'user_id': session.get('user_id'),
+            'user_name': session.get('user_name'),
+            'player_skill': session.get('player_skill'),
+            'puzzles_played': session.get('puzzles_played'),
+            'games_given_up': session.get('games_given_up'),
+            'session_id': session.sid if hasattr(session, 'sid') else 'N/A'
+        }
+        return jsonify({
+            'session_exists': bool(session.get('user_id')),
+            'session_data': session_data
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
+

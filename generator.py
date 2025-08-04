@@ -211,29 +211,84 @@ class SudokuGenerator:
         self.brute_force_solver = SudokuSolver(self.board)
         difficulty_map = {'easy': 40, 'medium': 34, 'hard': 28, 'extreme': 22}
         self.cells_to_fill = difficulty_map.get(difficulty, 34)
-        self._generate_full_solution()
-        self._poke_holes()
+        self.difficulty = difficulty
+
+        # Generate puzzle until we get the desired logical difficulty
+        self._generate_valid_puzzle()
         self._analyze_difficulty()
+
+    def _generate_valid_puzzle(self):
+        """
+        Generates a puzzle that not only has a unique solution
+        but also meets logical difficulty requirements if hard or extreme.
+        """
+        max_attempts = 50
+        attempt = 0
+
+        while attempt < max_attempts:
+            attempt += 1
+            # Step 1: Generate a full valid solution
+            self._generate_full_solution()
+
+            # Step 2: Randomly remove cells with uniqueness check
+            self._poke_holes()
+
+            # Step 3: Check logical difficulty
+            analysis = HumanSolver(self.board).analyze()
+
+            if self.difficulty in ['hard', 'extreme']:
+                if analysis['hardest_technique'] in ['Naked Pair', 'Pointing Pair']:
+                    # ✅ Puzzle meets logical difficulty
+                    self.analysis = analysis
+                    return
+                else:
+                    # ❌ Puzzle too easy, retry
+                    continue
+            else:
+                # Easy/Medium → any unique puzzle is fine
+                self.analysis = analysis
+                return
+
+        # If we exit loop, just keep last puzzle (fallback)
+        print("⚠ Warning: Max attempts reached, returning last puzzle (might be easier than desired).")
+
     def _generate_full_solution(self):
+        self.board = [[0 for _ in range(9)] for _ in range(9)]
+        self.brute_force_solver = SudokuSolver(self.board)
         self.brute_force_solver.solve()
         self.solution = copy.deepcopy(self.board)
         self.board = copy.deepcopy(self.solution)
+
     def _poke_holes(self):
+        """
+        Randomly removes cells until the target number of clues remain,
+        ensuring the puzzle always has a unique solution.
+        """
         cells = [(r, c) for r in range(9) for c in range(9)]
         random.shuffle(cells)
         cells_to_remove = 81 - self.cells_to_fill
         removed_count = 0
+
         for row, col in cells:
-            if removed_count >= cells_to_remove: break
+            if removed_count >= cells_to_remove:
+                break
+
             temp = self.board[row][col]
             self.board[row][col] = 0
+
+            # Check uniqueness
             board_copy = copy.deepcopy(self.board)
             solver_for_check = SudokuSolver(board_copy)
             if solver_for_check.count_solutions() != 1:
+                # Restore if puzzle loses uniqueness
                 self.board[row][col] = temp
             else:
                 removed_count += 1
+
     def _analyze_difficulty(self):
+        """
+        Final difficulty analysis using human techniques.
+        """
         human_solver = HumanSolver(self.board)
         full_analysis = human_solver.analyze()
         self.analysis = {
@@ -242,7 +297,6 @@ class SudokuGenerator:
         }
 
     def get_puzzle_and_analysis(self):
-        print(self.board)
         return {"puzzle": self.board, "solution": self.solution, "analysis": self.analysis}
 
 class SudokuSolver:
@@ -291,3 +345,24 @@ def print_board(board, title="Sudoku Puzzle"):
         print(f"{' '.join(printable_row[0:3])} | {' '.join(printable_row[3:6])} | {' '.join(printable_row[6:9])}")
     print("-" * 23)
 
+if __name__ == "__main__":
+    # Test generator for different difficulties
+    difficulties = ["easy", "medium", "hard", "extreme"]
+    
+    for level in difficulties:
+        print(f"\n=== Generating a {level.upper()} Sudoku Puzzle ===")
+        
+        generator = SudokuGenerator(difficulty=level)
+        result = generator.get_puzzle_and_analysis()
+        
+        puzzle = result["puzzle"]
+        solution = result["solution"]
+        analysis = result["analysis"]
+        
+        print_board(puzzle, title=f"{level.capitalize()} Puzzle")
+        print("\nHardest Technique Used:", analysis["hardest_technique"])
+        print("Difficulty Score:", analysis["score"])
+        
+        print("\n--- Solution ---")
+        print_board(solution, title=f"{level.capitalize()} Solution")
+        print("\n" + "="*40 + "\n")
