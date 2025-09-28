@@ -2,7 +2,6 @@ import random
 import copy
 from itertools import combinations
 
-# --- Part 1: The Human-Like Solver (Now with Advanced Techniques) ---
 
 class HumanSolver:
     """
@@ -16,8 +15,8 @@ class HumanSolver:
         self.technique_scores = {
             "Naked Single": 10,
             "Hidden Single": 25,
-            "Pointing Pair": 60, # New advanced technique
-            "Naked Pair": 80,    # New advanced technique
+            "Pointing Pair": 60,
+            "Naked Pair": 80,  
         }
 
     def analyze(self):
@@ -200,10 +199,6 @@ class HumanSolver:
     def _is_solved(self):
         return len(self.candidates) == 0
 
-# --- Part 2 & 3: Generator and Brute-Force Solver (Unchanged) ---
-# The beauty of this design is that the generator and the brute-force
-# uniqueness checker don't need to change at all. They just do their job,
-# and the HumanSolver provides the final layer of analysis.
 
 class SudokuGenerator:
     def __init__(self, difficulty='medium'):
@@ -249,7 +244,6 @@ class SudokuGenerator:
                 self.analysis = analysis
                 return
 
-        # If we exit loop, just keep last puzzle (fallback)
         print("⚠ Warning: Max attempts reached, returning last puzzle (might be easier than desired).")
 
     def _generate_full_solution(self):
