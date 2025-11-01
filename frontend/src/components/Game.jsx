@@ -15,6 +15,7 @@ function Game({ user, onLogout }) {
   const [waitingToStart, setWaitingToStart] = useState(false);
   const [loading, setLoading] = useState(true);
   const [puzzleLoaded, setPuzzleLoaded] = useState(false);
+  const [targetTime, setTargetTime] = useState(null);
   const [userStats, setUserStats] = useState({
     player_skill: user.player_skill || 20.0,
     puzzles_played: user.puzzles_played || 0,
@@ -36,13 +37,14 @@ function Game({ user, onLogout }) {
           solution,
           start_time: startTime,
           is_game_active: isGameActive,
-          elapsed_time: elapsedTime
+          elapsed_time: elapsedTime,
+          target_time: targetTime
         }),
       });
     } catch (err) {
       console.error('Failed to save game:', err);
     }
-  }, [puzzle, userBoard, solution, startTime, isGameActive, elapsedTime]);
+  }, [puzzle, userBoard, solution, startTime, isGameActive, elapsedTime, targetTime]);
 
   // Load saved game
   const loadGame = useCallback(async () => {
@@ -60,6 +62,7 @@ function Game({ user, onLogout }) {
         setStartTime(game.start_time);
         setIsGameActive(game.is_game_active);
         setElapsedTime(game.elapsed_time || 0);
+        setTargetTime(game.target_time || null);
         setIsPuzzleSolved(false);
         setWaitingToStart(!game.is_game_active);
         // Only show puzzle if game was active
@@ -158,6 +161,7 @@ function Game({ user, onLogout }) {
       setPuzzle(data.puzzle);
       setUserBoard(data.puzzle.map(row => [...row]));
       setSolution(data.solution);
+      setTargetTime(data.target_time || null);
       setSelectedCell(null);
       setIsPuzzleSolved(false);
       setStartTime(Date.now());
@@ -248,7 +252,11 @@ function Game({ user, onLogout }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ time_taken: timeTaken }),
+        body: JSON.stringify({ 
+          time_taken: timeTaken,
+          puzzle: puzzle,
+          solution: solution
+        }),
       });
 
       const data = await res.json();
@@ -387,6 +395,11 @@ function Game({ user, onLogout }) {
       )}
 
       <Timer isActive={isGameActive} resetSignal={startTime} elapsedTime={elapsedTime} />
+      {targetTime && (
+        <div className="text-center mt-2 text-base text-gray-600">
+          Target time: {Math.floor(targetTime / 60)} minutes: {targetTime % 60} seconds
+        </div>
+      )}
     </div>
   );
 }
