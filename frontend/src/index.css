@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+* {
+  font-family: 'Comic Sans MS', 'Comic Neue', cursive, sans-serif;
+}

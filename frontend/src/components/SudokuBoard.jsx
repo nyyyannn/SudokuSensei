@@ -26,19 +26,19 @@ export default function SudokuBoard({ puzzle, board, onCellSelect, selectedCell,
               // Highlight class with perfect alignment (no overspill)
               const highlightClass =
                 isSelected || isHighlighted
-                  ? 'z-10 after:content-[""] after:absolute after:inset-0 after:rounded-sm after:shadow-[0_0_0_3px_rgba(59,130,246,0.8),0_0_10px_rgba(59,130,246,0.6)]'
+                  ? 'z-10 after:content-[""] after:absolute after:inset-0 after:rounded-sm after:shadow-[0_0_0_3px_rgba(34,197,94,0.8),0_0_10px_rgba(34,197,94,0.6)]'
                   : '';
 
               return (
                 <td
                   key={c}
                   onClick={() => onCellSelect(r, c)}
-                  className={`relative w-10 h-10 p-0 ${borderClasses} ${
+                  className={`relative w-12 h-12 p-0 ${borderClasses} ${
                     isOriginal ? 'bg-gray-200 font-bold' : 'bg-white'
                   } ${highlightClass}`}
                 >
                   {isOriginal ? (
-                    <div className="w-full h-full flex items-center justify-center">{num}</div>
+                    <div className="w-full h-full flex items-center justify-center text-lg font-bold">{num}</div>
                   ) : (
                     <input
                       type="text"
@@ -56,7 +56,7 @@ export default function SudokuBoard({ puzzle, board, onCellSelect, selectedCell,
                           e.target.blur(); // no blinking cursor
                         }
                       }}
-                      className="w-full h-full text-center text-blue-600 bg-transparent outline-none caret-transparent"
+                      className="w-full h-full text-center text-green-500 bg-transparent outline-none caret-transparent text-lg font-semibold"
                     />
                   )}
                 </td>

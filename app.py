@@ -1,6 +1,6 @@
 from flask_cors import CORS
 from flask import Flask, request, jsonify, session, redirect, url_for
-from generator import SudokuGenerator 
+from generator import SudokuGenerator, print_board
 import os
 import math
 from pymongo import MongoClient
@@ -39,12 +39,10 @@ def check_auth():
     """Check if user is authenticated"""
     try:
         user_id = session.get('user_id')
-        print(f"Auth check - Session user_id: {user_id}")
         
         if user_id:
             user = users_collection.find_one({'_id': ObjectId(user_id)})
             if user:
-                print(f"Auth check - User found: {user['name']}")
                 return jsonify({
                     'authenticated': True,
                     'user': {
@@ -56,15 +54,11 @@ def check_auth():
                     }
                 })
             else:
-                print(f"Auth check - User not found in DB for ID: {user_id}")
                 # Clear invalid session
                 session.clear()
-        else:
-            print("Auth check - No user_id in session")
             
         return jsonify({'authenticated': False})
     except Exception as e:
-        print(f"Auth check error: {e}")
         return jsonify({'authenticated': False, 'error': str(e)})
 
 @app.route('/api/auth/signup', methods=['POST'])
@@ -123,6 +117,8 @@ def login():
     if not user:
         return jsonify({'error': 'User not found'}), 404
     
+    user_id = ObjectId(user['_id'])
+    
     # Set session as permanent
     session.permanent = True
     session['user_id'] = str(user['_id'])
@@ -130,6 +126,15 @@ def login():
     session['player_skill'] = user.get('player_skill', 20.0)
     session['puzzles_played'] = user.get('puzzles_played', 0)
     session['games_given_up'] = user.get('games_given_up', 0)
+    
+    # Check if there's a saved game and restore target_time to session
+    game = games_collection.find_one({'user_id': user_id})
+    if game and game.get('is_game_active'):
+        target_time = game.get('target_time')
+        if target_time:
+            session['target_time'] = target_time
+            session['seconds_per_cell'] = game.get('seconds_per_cell')
+            session['difficulty_setting'] = game.get('difficulty_setting')
     
     return jsonify({
         'success': True,
@@ -141,7 +146,28 @@ def login():
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
-    """Logout user"""
+    """Logout user - save game state before clearing session"""
+    if session.get('user_id'):
+        user_id = ObjectId(session['user_id'])
+        
+        # Check if there's an active game and save it with current timer state
+        game = games_collection.find_one({'user_id': user_id})
+        if game and game.get('is_game_active'):
+            # Update the game with current session timer data if available
+            game_data = {
+                'target_time': session.get('target_time'),
+                'seconds_per_cell': session.get('seconds_per_cell'),
+                'difficulty_setting': session.get('difficulty_setting'),
+                'updated_at': datetime.utcnow()
+            }
+            # Only update fields that exist in session
+            game_data = {k: v for k, v in game_data.items() if v is not None}
+            if game_data:
+                games_collection.update_one(
+                    {'user_id': user_id},
+                    {'$set': game_data}
+                )
+    
     session.clear()
     return jsonify({'success': True})
 
@@ -206,7 +232,10 @@ def save_game():
         'solution': data.get('solution'),
         'start_time': data.get('start_time'),
         'is_game_active': data.get('is_game_active', False),
-        'elapsed_time': data.get('elapsed_time', 0),  # Store elapsed time
+        'elapsed_time': data.get('elapsed_time', 0),
+        'target_time': data.get('target_time') or session.get('target_time'),
+        'seconds_per_cell': session.get('seconds_per_cell'),
+        'difficulty_setting': session.get('difficulty_setting'),
         'updated_at': datetime.utcnow()
     }
     
@@ -229,6 +258,13 @@ def load_game():
     game = games_collection.find_one({'user_id': user_id})
     
     if game:
+        # Restore target_time to session if it exists
+        target_time = game.get('target_time')
+        if target_time:
+            session['target_time'] = target_time
+            session['seconds_per_cell'] = game.get('seconds_per_cell')
+            session['difficulty_setting'] = game.get('difficulty_setting')
+        
         return jsonify({
             'has_saved_game': True,
             'game': {
@@ -237,7 +273,8 @@ def load_game():
                 'solution': game.get('solution'),
                 'start_time': game.get('start_time'),
                 'is_game_active': game.get('is_game_active', False),
-                'elapsed_time': game.get('elapsed_time', 0)
+                'elapsed_time': game.get('elapsed_time', 0),
+                'target_time': target_time
             }
         })
     
@@ -262,22 +299,26 @@ def new_game():
     else:
         difficulty_setting = 'hard'
         seconds_per_cell = 20
-
-    print(f"Player skill is {player_skill:.2f}. Generating a '{difficulty_setting}' puzzle.")
     
     generator = SudokuGenerator(difficulty=difficulty_setting)
     result = generator.get_puzzle_and_analysis()
 
     puzzle_board = result['puzzle']
+    solution_board = result['solution']
     empty_cells = count_empty_cells(puzzle_board)
     target_time = empty_cells * seconds_per_cell
+
+    # Print puzzle and solution to console
+    print(f"\n=== Generated {difficulty_setting.upper()} Sudoku Puzzle ===")
+    print_board(puzzle_board, title=f"{difficulty_setting.capitalize()} Puzzle")
+    print("\n--- Complete Solution ---")
+    print_board(solution_board, title=f"{difficulty_setting.capitalize()} Solution")
+    print("=" * 50 + "\n")
 
     # Store necessary info for the new reward calculation
     session['target_time'] = target_time
     session['seconds_per_cell'] = seconds_per_cell
     session['difficulty_setting'] = difficulty_setting
-
-    print(f"Puzzle has {empty_cells} empty cells. Target time is {target_time}s.")
 
     result['target_time'] = target_time
     return jsonify(result)
@@ -343,14 +384,17 @@ def submit_solution():
     # Clean up: Delete saved game since puzzle is completed
     games_collection.delete_one({'user_id': user_id})
 
-    print(f"Time: {time_taken:.1f}s, Target: {target_time}s. Skill change: {skill_change:.2f}. New skill: {new_skill:.2f}")
-
+    # Get updated puzzles_played from database
+    updated_user = users_collection.find_one({'_id': user_id})
+    puzzles_played = updated_user.get('puzzles_played', 0) if updated_user else session['puzzles_played']
+    
     return jsonify({
         'status': 'success',
         'new_skill_score': new_skill,
         'old_skill_score': old_skill,
         'skill_change': skill_change,
-        'was_target_met': time_taken <= target_time
+        'was_target_met': time_taken <= target_time,
+        'puzzles_played': puzzles_played
     })
 
 @app.route('/api/debug/session', methods=['GET'])

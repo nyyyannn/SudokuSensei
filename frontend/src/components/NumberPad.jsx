@@ -7,7 +7,7 @@ export default function NumberPad({ onNumberSelect }) {
         <button
           key={num}
           onClick={() => onNumberSelect(num)}
-          className="bg-white border px-4 py-2 rounded hover:bg-blue-100"
+          className="bg-white border border-gray-300 px-4 py-2 rounded hover:bg-green-100 hover:border-green-400 transition-all duration-300 ease-in-out transform hover:scale-110"
         >
           {num}
         </button>
