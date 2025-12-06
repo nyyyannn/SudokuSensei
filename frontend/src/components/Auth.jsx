@@ -7,6 +7,8 @@ function Auth({ onAuthSuccess }) {
   const [loading, setLoading] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL;  
+
   useEffect(() => {
     const handleMouseMove = (e) => {
       setMousePosition({
@@ -26,7 +28,7 @@ function Auth({ onAuthSuccess }) {
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/signup';
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

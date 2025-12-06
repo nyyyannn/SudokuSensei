@@ -13,7 +13,7 @@ load_dotenv()
 
 app = Flask(__name__)
 # IMPORTANT: Update this origin to your actual frontend URL in production
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"]) 
+CORS(app, supports_credentials=True, origins=["http://localhost:5173","https://sudokusensei.onrender.com"]) 
 app.secret_key = os.getenv("SECRET_KEY")
 
 # Session configuration to prevent loss on refresh

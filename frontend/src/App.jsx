@@ -6,6 +6,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL;
+
   // Check authentication status on mount
   useEffect(() => {
     checkAuth();
@@ -14,7 +16,7 @@ function App() {
   const checkAuth = async (retryCount = 0) => {
     try {
       console.log('Checking authentication...');
-      const response = await fetch('http://localhost:5000/api/auth/check', {
+      const response = await fetch(`${API_BASE}/api/auth/check`, {
         credentials: 'include',
       });
       
